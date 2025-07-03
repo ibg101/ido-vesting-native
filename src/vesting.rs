@@ -69,11 +69,44 @@ impl LinearVestingStrategy {
 
     /// If the cliff equals to 0 => which basically means there is no cliff, program will use the current timestamp as the end of the cliff
     /// so the vesting period starts.
+    /// 
     /// Otherwise the provided cliff will be set and validated later in `Self::is_valid()` method.
     pub fn reinit_with_checked_cliff(self, clock: &Clock) -> Self {
         Self {
             cliff_end_ts: if self.cliff_end_ts == 0 { clock.unix_timestamp } else { self.cliff_end_ts },
             ..self
         }
+    }
+
+    #[cfg(feature = "program-test")]
+    /// All arguments must be represented as seconds.
+    pub fn new(
+        cliff_duration: Option<i64>, 
+        vesting_duration: i64,
+        unlock_period: i64
+    ) -> Self {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        
+        let now_ts: i64 = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64;
+
+        let cliff_end_ts: i64 = if let Some(cliff_duration) = cliff_duration {
+            now_ts + cliff_duration
+        } else {
+            0
+        };
+
+        Self {
+            cliff_end_ts,
+            vesting_end_ts: vesting_duration + now_ts,
+            unlock_period
+        }
+    }
+
+    #[cfg(feature = "program-test")]
+    pub fn new_without_cliff(
+        vesting_duration: i64,
+        unlock_period: i64
+    ) -> Self {
+        Self::new(None, vesting_duration, unlock_period)
     }
 }

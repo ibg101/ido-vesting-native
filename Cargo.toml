@@ -2,6 +2,7 @@
 name = "ido-with-vesting"
 version = "0.1.0"
 edition = "2021"
+authors = ["Ivan Bets <ivan.bets17@gmail.com>"]
 
 [dependencies]
 solana-program = "2.3.0"
@@ -16,6 +17,13 @@ tokio = { version = "1.45.1", features = ["macros", "rt-multi-thread"] }
 [lib]
 crate-type = ["cdylib", "lib"]
 
+[features]
+program-test = []
+
 [[example]]
 name = "client"
 path = "examples/client.rs"
+
+[[test]]
+name = "program"
+path = "tests/program.rs"

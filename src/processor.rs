@@ -12,7 +12,7 @@ use solana_program::{
     program_error::ProgramError,
     program::{invoke, invoke_signed},
 };
-use spl_token_2022::state::Account;
+use spl_token_2022::state::{Account, Mint};
 use super::{
     accounts::IDOInitializeIxAccounts,
     constants::*,
@@ -73,11 +73,6 @@ impl Processor {
         let signer_pkey: &Pubkey = signer_info.key;
 
         // 2. Check that the provided accounts are deterministic PDA
-        let (config_pda, config_bump) = Pubkey::find_program_address(&[
-            IDO_CONFIG_ACCOUNT_SEED, 
-            treasury_info.key.as_ref()
-        ], program_id); 
-
         if *treasury_info.key != Pubkey::find_program_address(&[
             IDO_TREASURY_ACCOUNT_SEED, 
             mint_info.key.as_ref()
@@ -85,13 +80,20 @@ impl Processor {
             return Err(ProgramError::InvalidInstructionData);
         }
 
+        let (config_pda, config_bump) = Pubkey::find_program_address(&[
+            IDO_CONFIG_ACCOUNT_SEED, 
+            treasury_info.key.as_ref()
+        ], program_id);
+
         if *config_info.key != config_pda {
             return Err(ProgramError::InvalidInstructionData);
         }
 
-        let rent_sysvar: Rent = Rent::from_account_info(rent_info)?;
+        let mint: Mint = Mint::unpack(*mint_info.data.borrow())?;
 
         // 3. Create accounts with SystemProgram
+        let rent_sysvar: Rent = Rent::from_account_info(rent_info)?;
+
         let treasury_rent_exempt: u64 = rent_sysvar.minimum_balance(Account::LEN);
         let create_treasury_ix: Instruction = system_instruction::create_account(
             signer_pkey, 
@@ -100,7 +102,6 @@ impl Processor {
             Account::LEN as u64, 
             token_program_info.key
         );
-
         invoke(
             &create_treasury_ix,
             &[
@@ -117,7 +118,6 @@ impl Processor {
             IDOConfigAccount::LEN as u64, 
             program_id
         );
-
         invoke(
             &create_config_ix,
             &[
@@ -155,7 +155,26 @@ impl Processor {
         ido_config_account.pack_into_slice(*config_info.data.borrow_mut());
 
         // 6. Transfer the provided supply from `signer_ata` to `treasury`
-        
+        let transfer_checked_ix: Instruction = spl_token_2022::instruction::transfer_checked(
+            token_program_info.key, 
+            signer_ata_info.key, 
+            mint_info.key, 
+            treasury_info.key, 
+            signer_pkey, 
+            &[], 
+            amount, 
+            mint.decimals
+        )?;
+        invoke(
+            &transfer_checked_ix,
+            &[
+                signer_ata_info.clone(),
+                mint_info.clone(),
+                treasury_info.clone(),
+                signer_info.clone()
+            ]
+        )?;
+
         Ok(())
     }
 }
