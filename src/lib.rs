@@ -5,3 +5,4 @@ pub mod processor;
 pub mod vesting;
 pub mod constants;
 pub mod accounts;
+pub mod error;

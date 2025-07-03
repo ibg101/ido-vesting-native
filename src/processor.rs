@@ -1,6 +1,7 @@
 #[allow(deprecated)]
 use solana_program::{
     rent::Rent,
+    clock::Clock,
     sysvar::Sysvar,
     pubkey::Pubkey,
     system_instruction,
@@ -53,19 +54,30 @@ impl Processor {
         lamports_per_token: u32,
         vesting_strategy: LinearVestingStrategy 
     ) -> ProgramResult {
+        // 1. Validate the provided Vesting Strategy.
+        let clock: Clock = Clock::get()?;
+        let vesting_strategy: LinearVestingStrategy = vesting_strategy.reinit_with_checked_cliff(&clock);
+        vesting_strategy.is_valid(&clock)?;
+
         let IDOInitializeIxAccounts { 
             signer_info, 
             signer_ata_info, 
             treasury_info,
             config_info,
             mint_info,
+            rent_info,
             token_program_info,
             system_program_info
         } = accounts.try_into()?;
 
         let signer_pkey: &Pubkey = signer_info.key;
 
-        // 1. Check that the provided accounts are deterministic PDA
+        // 2. Check that the provided accounts are deterministic PDA
+        let (config_pda, config_bump) = Pubkey::find_program_address(&[
+            IDO_CONFIG_ACCOUNT_SEED, 
+            treasury_info.key.as_ref()
+        ], program_id); 
+
         if *treasury_info.key != Pubkey::find_program_address(&[
             IDO_TREASURY_ACCOUNT_SEED, 
             mint_info.key.as_ref()
@@ -73,19 +85,18 @@ impl Processor {
             return Err(ProgramError::InvalidInstructionData);
         }
 
-        if *config_info.key != Pubkey::find_program_address(&[
-            IDO_CONFIG_ACCOUNT_SEED, 
-            treasury_info.key.as_ref()
-        ], program_id).0 {
+        if *config_info.key != config_pda {
             return Err(ProgramError::InvalidInstructionData);
         }
 
-        // 2. Create & Initialize accounts with SystemProgram
-        let treasury_rent_exempt: u64 = Rent::get()?.minimum_balance(Account::LEN);
+        let rent_sysvar: Rent = Rent::from_account_info(rent_info)?;
+
+        // 3. Create accounts with SystemProgram
+        let treasury_rent_exempt: u64 = rent_sysvar.minimum_balance(Account::LEN);
         let create_treasury_ix: Instruction = system_instruction::create_account(
             signer_pkey, 
             treasury_info.key, 
-            treasury_rent_exempt + amount, 
+            treasury_rent_exempt, 
             Account::LEN as u64, 
             token_program_info.key
         );
@@ -95,11 +106,10 @@ impl Processor {
             &[
                 signer_info.clone(),
                 treasury_info.clone(),
-                system_program_info.clone()
             ]
         )?;
         
-        let config_rent_exempt: u64 = Rent::get()?.minimum_balance(IDOConfigAccount::LEN);
+        let config_rent_exempt: u64 = rent_sysvar.minimum_balance(IDOConfigAccount::LEN);
         let create_config_ix: Instruction = system_instruction::create_account(
             signer_pkey, 
             config_info.key, 
@@ -113,14 +123,39 @@ impl Processor {
             &[
                 signer_info.clone(),
                 config_info.clone(),
-                system_program_info.clone()
             ]
         )?;
 
-        // 3. Initialize Treasury Token Account wtih SPL token program
+        // 4. Initialize Treasury Token Account wtih SPL token program
+        let initialize_treasury_ix: Instruction = spl_token_2022::instruction::initialize_account(
+            token_program_info.key, 
+            treasury_info.key, 
+            mint_info.key, 
+            treasury_info.key
+        )?;
+        invoke(
+            &initialize_treasury_ix,
+            &[
+                treasury_info.clone(),
+                mint_info.clone(),
+                treasury_info.clone(),
+                rent_info.clone()
+            ]
+        )?;
 
-        // todo..
+        // 5. Initialize Config PDA Account
+        let unlocks: u8 = ((vesting_strategy.vesting_end_ts - vesting_strategy.cliff_end_ts) / vesting_strategy.unlock_period) as u8; 
+        let ido_config_account: IDOConfigAccount = IDOConfigAccount {
+            vesting_strategy,
+            lamports_per_token,
+            unlocks,
+            bump: config_bump,
+            is_initialized: true
+        };
+        ido_config_account.pack_into_slice(*config_info.data.borrow_mut());
 
+        // 6. Transfer the provided supply from `signer_ata` to `treasury`
+        
         Ok(())
     }
 }
