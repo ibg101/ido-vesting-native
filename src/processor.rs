@@ -14,12 +14,17 @@ use solana_program::{
 };
 use spl_token_2022::state::{Account, Mint};
 use super::{
-    accounts::IDOInitializeIxAccounts,
+    accounts::{
+        IDOInitializeIxAccounts, 
+        IDOBuyWithVesting
+    },
     constants::*,
     instruction::IDOInstruction,
     vesting::LinearVestingStrategy,
-    state::IDOConfigAccount
+    state::{IDOConfigAccount, IDOVestingAccount}
 };
+
+use std::cell::Ref;
 
 
 pub struct Processor;
@@ -39,7 +44,7 @@ impl Processor {
                 vesting_strategy 
             } => Self::process_initialize_ido_with_vesting_instruction(program_id, accounts, amount, lamports_per_token, vesting_strategy)?,
             
-            IDOInstruction::BuyWithVesting { amount } => todo!(),
+            IDOInstruction::BuyWithVesting { amount } => Self::process_buy_with_vesting_instruction(program_id, accounts, amount)?,
             
             IDOInstruction::Claim => todo!()
         };
@@ -181,6 +186,120 @@ impl Processor {
                 mint_info.clone(),
                 treasury_info.clone(),
                 signer_info.clone()
+            ]
+        )?;
+
+        Ok(())
+    }
+
+    fn process_buy_with_vesting_instruction(
+        program_id: &Pubkey, 
+        accounts: &[AccountInfo], 
+        amount: u64
+    ) -> ProgramResult {
+        // 1. Check ownership & vesting account deterministic derivation; Validate that the authority & mint of treasury ATA
+        let IDOBuyWithVesting { 
+            signer_info, 
+            vesting_info, 
+            treasury_info, 
+            config_info, 
+            mint_info, 
+            ..
+        } = accounts.try_into()?;
+        
+        let (signer_pkey_bytes, mint_pkey_bytes) = (
+            signer_info.key.as_ref(),
+            mint_info.key.as_ref()
+        );
+        let (vesting_pda, vesting_bump) = Pubkey::find_program_address(
+            &[
+                IDO_VESTING_ACCOUNT_SEED,
+                signer_pkey_bytes,
+                mint_pkey_bytes        
+            ], 
+            program_id
+        );
+
+        let treasury_ata: Account = Account::unpack(*treasury_info.data.borrow())?;
+
+        if config_info.owner != program_id
+        || vesting_pda != *vesting_info.key
+        || treasury_ata.mint != *mint_info.key
+        || treasury_ata.owner != *treasury_info.key
+        {
+            return Err(ProgramError::InvalidInstructionData);
+        }
+
+        // 3. Get `lamports_per_token` from Config PDA & `calculate lamports_transfer_amount`
+        let config: IDOConfigAccount = IDOConfigAccount::unpack(*config_info.data.borrow())?;
+        let lamports_transfer_amount: u64 = amount * config.lamports_per_token as u64;
+        let rent: Rent = Rent::get()?;
+
+        // 4. Initialize Vesting PDA if needed OR unpack it and update necessary fields.
+        let maybe_vesting_account  = {
+            // gets dropped at the end of this scope, so we dont have to call `std::mem::drop` manually twice in if else blocks
+            let vesting_data_ref: Ref<&mut [u8]> = vesting_info.data.borrow();
+            IDOVestingAccount::unpack(*vesting_data_ref)
+        };
+        
+        if let Ok(mut vesting_account) = maybe_vesting_account {        
+            let updated_bought_amount: u64 = vesting_account.bought_amount
+                .checked_add(amount)
+                .ok_or(ProgramError::ArithmeticOverflow)?;
+            vesting_account.bought_amount = updated_bought_amount;
+            vesting_account.amount_per_unlock = updated_bought_amount / config.unlocks as u64;
+
+            vesting_account.pack_into_slice(*vesting_info.data.borrow_mut()); 
+        } else {
+            let vesting_rent_exempt: u64 = rent.minimum_balance(IDOVestingAccount::LEN);
+            let create_vesting_account_ix: Instruction = system_instruction::create_account(
+                signer_info.key, 
+                &vesting_pda, 
+                vesting_rent_exempt, 
+                IDOVestingAccount::LEN as u64, 
+                program_id
+            );
+            invoke_signed(
+                &create_vesting_account_ix,
+                &[
+                    signer_info.clone(),
+                    vesting_info.clone()
+                ],
+                &[&[IDO_VESTING_ACCOUNT_SEED, signer_pkey_bytes, mint_pkey_bytes, &[vesting_bump]]]
+            )?;
+
+            let vesting_account: IDOVestingAccount = IDOVestingAccount::new(
+                amount, 
+                amount / config.unlocks as u64, 
+                vesting_bump
+            );
+
+            vesting_account.pack_into_slice(*vesting_info.data.borrow_mut());
+        };
+
+        // IMPROTANT: this code of block must be located below step 3, because we have to know the updated `signer_info.lamports` balance.
+        // 
+        // 5. Check if `signer` lamports balance is not lower than the required amount.
+        // SystemProgram owned accounts have data len == 0 bytes.
+        let signers_balance_without_rent: u64 = signer_info.lamports()
+            .checked_sub(rent.minimum_balance(0))
+            .ok_or(ProgramError::InsufficientFunds)?;
+
+        if signers_balance_without_rent < lamports_transfer_amount {
+            return Err(ProgramError::InsufficientFunds);
+        }
+
+        // 6. Transfer `lamports_transfer_amount` to `treasury ATA`.
+        let transfer_ix: Instruction = system_instruction::transfer(
+            signer_info.key, 
+            treasury_info.key, 
+            lamports_transfer_amount
+        );
+        invoke(
+            &transfer_ix,
+            &[
+                signer_info.clone(),
+                treasury_info.clone()
             ]
         )?;
 

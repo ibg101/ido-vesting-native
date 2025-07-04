@@ -21,7 +21,6 @@ pub struct IDOBuyWithVesting<'a, 'b> {
     pub treasury_info: &'a AccountInfo<'b>,
     pub config_info: &'a AccountInfo<'b>,
     pub mint_info: &'a AccountInfo<'b>,
-    pub token_program_info: &'a AccountInfo<'b>,
     pub system_program_info: &'a AccountInfo<'b>
 }
 
@@ -56,7 +55,6 @@ impl<'a, 'b> TryFrom<&'a [AccountInfo<'b>]> for IDOBuyWithVesting<'a, 'b> {
             treasury_info: next_account_info(accounts_iter)?,
             config_info: next_account_info(accounts_iter)?,
             mint_info: next_account_info(accounts_iter)?,
-            token_program_info: next_account_info(accounts_iter)?,
             system_program_info: next_account_info(accounts_iter)?
         })
     }    

@@ -6,7 +6,7 @@ use solana_program::{
         IsInitialized
     }
 };
-use super::{
+use crate::{
     vesting::LinearVestingStrategy,
     utils::{
         read_u32_slice,
