@@ -16,11 +16,11 @@ pub struct LinearVestingStrategy {
 
 impl AsRef<[u8]> for LinearVestingStrategy {
     fn as_ref(&self) -> &[u8] {
-        let ptr: *const u8 = &raw const self as *const u8;
-        let len: usize = std::mem::size_of::<Self>();
-
-        unsafe {
-            std::slice::from_raw_parts(ptr, len)
+        unsafe { 
+            std::slice::from_raw_parts(
+                self as *const Self as *const u8, 
+                std::mem::size_of::<Self>()
+            )
         }
     }
 }

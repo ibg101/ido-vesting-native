@@ -67,22 +67,28 @@ impl Processor {
             mint_info,
             rent_info,
             token_program_info,
-            system_program_info
+            ..
         } = accounts.try_into()?;
 
         let signer_pkey: &Pubkey = signer_info.key;
 
         // 2. Check that the provided accounts are deterministic PDA
-        if *treasury_info.key != Pubkey::find_program_address(&[
+        let mint_pkey_bytes: &[u8] = mint_info.key.as_ref();
+
+        let (treasury_ata, treasury_bump) = Pubkey::find_program_address(&[
             IDO_TREASURY_ACCOUNT_SEED, 
-            mint_info.key.as_ref()
-        ], token_program_info.key).0 {
+            mint_pkey_bytes
+        ], program_id);
+
+        if *treasury_info.key != treasury_ata {
             return Err(ProgramError::InvalidInstructionData);
         }
 
+        let treasury_pkey_bytes: &[u8] = treasury_ata.as_ref();
+
         let (config_pda, config_bump) = Pubkey::find_program_address(&[
             IDO_CONFIG_ACCOUNT_SEED, 
-            treasury_info.key.as_ref()
+            treasury_pkey_bytes
         ], program_id);
 
         if *config_info.key != config_pda {
@@ -102,12 +108,14 @@ impl Processor {
             Account::LEN as u64, 
             token_program_info.key
         );
-        invoke(
+
+        invoke_signed(
             &create_treasury_ix,
             &[
                 signer_info.clone(),
                 treasury_info.clone(),
-            ]
+            ],
+            &[&[IDO_TREASURY_ACCOUNT_SEED, mint_pkey_bytes, &[treasury_bump]]]
         )?;
         
         let config_rent_exempt: u64 = rent_sysvar.minimum_balance(IDOConfigAccount::LEN);
@@ -118,12 +126,13 @@ impl Processor {
             IDOConfigAccount::LEN as u64, 
             program_id
         );
-        invoke(
+        invoke_signed(
             &create_config_ix,
             &[
                 signer_info.clone(),
                 config_info.clone(),
-            ]
+            ],
+            &[&[IDO_CONFIG_ACCOUNT_SEED, treasury_pkey_bytes, &[config_bump]]]
         )?;
 
         // 4. Initialize Treasury Token Account wtih SPL token program
@@ -154,7 +163,7 @@ impl Processor {
         };
         ido_config_account.pack_into_slice(*config_info.data.borrow_mut());
 
-        // 6. Transfer the provided supply from `signer_ata` to `treasury`
+        // 6. Transfer provided supply from `signer_ata` to `treasury`
         let transfer_checked_ix: Instruction = spl_token_2022::instruction::transfer_checked(
             token_program_info.key, 
             signer_ata_info.key, 

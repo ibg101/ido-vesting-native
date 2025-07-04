@@ -4,7 +4,11 @@ use utils::spl_token_manipulations::Prelude;
 use ido_with_vesting::{
     ID as IDO_PROGRAM_ID,
     entrypoint,
-    vesting::LinearVestingStrategy
+    vesting::LinearVestingStrategy,
+    constants::{
+        IDO_CONFIG_ACCOUNT_SEED, 
+        IDO_TREASURY_ACCOUNT_SEED
+    }
 };
 
 use spl_token_2022::ID as SPL_TOKEN_2022_ID;
@@ -16,13 +20,14 @@ use solana_program_test::{
 use solana_program::{
     system_program::ID as SYSTEM_PROGRAM_ID,
     rent::Rent,
-    hash::Hash,
     pubkey::Pubkey,
     instruction::{AccountMeta, Instruction},
 };
 use solana_sdk::{
+    message::Message,
+    transaction::Transaction,
     sysvar::SysvarId,
-    signer::{keypair::Keypair, Signer}
+    signer::Signer
 };
 
 
@@ -51,6 +56,21 @@ async fn test_initialize_ido_with_vesting_ix() -> Result<(), BanksClientError> {
         60          // 1 minute every new unlock
     );
 
+    let treasury_pda: Pubkey = Pubkey::find_program_address(
+        &[
+            IDO_TREASURY_ACCOUNT_SEED,
+            mint_pkey.as_ref()
+        ],
+        &IDO_PROGRAM_ID
+    ).0;
+    let config_pda: Pubkey = Pubkey::find_program_address(
+        &[
+            IDO_CONFIG_ACCOUNT_SEED,
+            treasury_pda.as_ref()
+        ], 
+        &IDO_PROGRAM_ID
+    ).0;
+
     let mut ix_payload: Vec<u8> = Vec::with_capacity(37);         
     ix_payload.push(0);  // IDOInstruction::InitializeWithVesting
     ix_payload.extend_from_slice(&transfer_amount.to_le_bytes());
@@ -63,8 +83,8 @@ async fn test_initialize_ido_with_vesting_ix() -> Result<(), BanksClientError> {
         vec![
             AccountMeta::new(payer_pkey, true),
             AccountMeta::new(ata_pda, false),
-            // AccountMeta::new(treasury_pda, false),
-            // AccountMeta::new_readonly(config_pda, false),
+            AccountMeta::new(treasury_pda, false),
+            AccountMeta::new(config_pda, false),
             AccountMeta::new_readonly(mint_pkey, false),
             AccountMeta::new_readonly(Rent::id(), false),
             AccountMeta::new_readonly(SPL_TOKEN_2022_ID, false),
@@ -73,8 +93,12 @@ async fn test_initialize_ido_with_vesting_ix() -> Result<(), BanksClientError> {
     );
 
     // 2. Craft transaction
+    let message: Message = Message::new(&[initialize_ido_ix], Some(&payer_pkey));
+    let mut initialize_ido_tx: Transaction = Transaction::new_unsigned(message);
 
     // 3. Sign tx and send it
+    initialize_ido_tx.sign(&[payer], latest_blockhash);
+    banks_client.process_transaction(initialize_ido_tx).await?;
 
     Ok(())
 }

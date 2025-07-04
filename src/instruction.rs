@@ -30,7 +30,7 @@ impl IDOInstruction {
 
     fn unpack_initialize_with_vesting(data: &[u8]) -> Result<Self, ProgramError> {
         Self::check_expected_payload_len(data.len(), 36)?;
-
+        
         Ok(Self::InitializeWithVesting { 
             amount: u64::from_le_bytes(data[..8].try_into().map_err(|_| ProgramError::InvalidInstructionData)?), 
             lamports_per_token: u32::from_le_bytes(data[8..12].try_into().map_err(|_| ProgramError::InvalidInstructionData)?), 
