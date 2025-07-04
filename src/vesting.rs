@@ -1,6 +1,4 @@
-use std::array::TryFromSliceError;
 use solana_program::{sysvar::clock::Clock, entrypoint::ProgramResult};
-
 use super::{
     error::IDOProgramError,
     constants::MAX_UNLOCKS
@@ -22,18 +20,6 @@ impl AsRef<[u8]> for LinearVestingStrategy {
                 std::mem::size_of::<Self>()
             )
         }
-    }
-}
-
-impl TryFrom<&[u8]> for LinearVestingStrategy {
-    type Error = TryFromSliceError;
-
-    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-        Ok(Self {
-            cliff_end_ts: i64::from_le_bytes(value[..8].try_into()?),
-            vesting_end_ts: i64::from_le_bytes(value[8..16].try_into()?),
-            unlock_period: i64::from_le_bytes(value[16..24].try_into()?)
-        })
     }
 }
 

@@ -6,6 +6,7 @@ pub mod vesting;
 pub mod constants;
 pub mod accounts;
 pub mod error;
+pub mod utils;
 
 
 solana_program::declare_id!("14oAioJ9zypo5Q6CV9Wtuvyv8HiyQE2PvTfJYKik55im");

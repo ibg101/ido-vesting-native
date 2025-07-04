@@ -1,5 +1,12 @@
 use solana_program::program_error::ProgramError;
-use super::vesting::LinearVestingStrategy;
+use super::{
+    utils::{
+        Reader,
+        ReadBytes,
+        read_u64_slice
+    },
+    vesting::LinearVestingStrategy
+};
 
 
 pub enum IDOInstruction {
@@ -31,23 +38,27 @@ impl IDOInstruction {
     fn unpack_initialize_with_vesting(data: &[u8]) -> Result<Self, ProgramError> {
         Self::check_expected_payload_len(data.len(), 36)?;
         
-        Ok(Self::InitializeWithVesting { 
-            amount: u64::from_le_bytes(data[..8].try_into().map_err(|_| ProgramError::InvalidInstructionData)?), 
-            lamports_per_token: u32::from_le_bytes(data[8..12].try_into().map_err(|_| ProgramError::InvalidInstructionData)?), 
-            vesting_strategy: data[12..36].try_into().map_err(|_| ProgramError::InvalidInstructionData)? 
+        let reader: Reader = data.into();
+
+        Ok(Self::InitializeWithVesting {
+            amount: reader.read_u64(0)?,
+            lamports_per_token: reader.read_u32(8)?,
+            vesting_strategy: reader.read_linear_vesting_strategy(12)?
         })
     }
 
     fn unpack_buy_with_vesting(data: &[u8]) -> Result<Self, ProgramError> {
         Self::check_expected_payload_len(data.len(), 8)?;
         
-        todo!()
+        Ok(Self::BuyWithVesting { 
+            amount: read_u64_slice(data, 0)?
+        })
     }
 
     fn unpack_claim(data: &[u8]) -> Result<Self, ProgramError> {
         Self::check_expected_payload_len(data.len(), 0)?;
         
-        todo!()
+        Ok(Self::Claim)
     }
 
     /// `expected_len` - ix's payload length without enum variant's discriminator.
