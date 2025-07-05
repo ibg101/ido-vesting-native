@@ -3,7 +3,9 @@ use utils::spl_token_manipulations::Prelude;
 
 use ido_with_vesting::{
     ID as IDO_PROGRAM_ID,
+    external_ids::ATA_PROGRAM_ID,
     entrypoint,
+    utils::derive_program_pda,
     vesting::LinearVestingStrategy,
     constants::{
         IDO_CONFIG_ACCOUNT_SEED, 
@@ -33,7 +35,8 @@ use solana_sdk::{
 
 
 #[tokio::test]
-async fn test_initialize_ido_with_vesting_ix() -> Result<(), BanksClientError> {
+// async fn test_initialize_ido_with_vesting_ix() -> Result<(), BanksClientError> {
+async fn test_all_instructions() -> Result<(), BanksClientError> {
     // spl token 2022 is preloaded automatically, so there is no need to explicitly add_program with spl-token-2022 binary
     let program: ProgramTest = ProgramTest::new(
         "ido_with_vesting", 
@@ -57,20 +60,14 @@ async fn test_initialize_ido_with_vesting_ix() -> Result<(), BanksClientError> {
         60          // 1 minute every new unlock
     );
 
-    let treasury_pda: Pubkey = Pubkey::find_program_address(
-        &[
-            IDO_TREASURY_ACCOUNT_SEED,
-            mint_pkey.as_ref()
-        ],
-        &IDO_PROGRAM_ID
-    ).0;
-    let config_pda: Pubkey = Pubkey::find_program_address(
-        &[
-            IDO_CONFIG_ACCOUNT_SEED,
-            treasury_pda.as_ref()
-        ], 
-        &IDO_PROGRAM_ID
-    ).0;
+    let treasury_pda: Pubkey = derive_program_pda(&[
+        IDO_TREASURY_ACCOUNT_SEED,
+        mint_pkey.as_ref()
+    ]).0;
+    let config_pda: Pubkey = derive_program_pda(&[
+        IDO_CONFIG_ACCOUNT_SEED,
+        treasury_pda.as_ref()
+    ]).0;
 
     let mut init_ix_payload: Vec<u8> = Vec::with_capacity(37);         
     init_ix_payload.push(0);  // IDOInstruction::InitializeWithVesting
@@ -139,5 +136,58 @@ async fn test_initialize_ido_with_vesting_ix() -> Result<(), BanksClientError> {
     buy_tx.sign(&[&payer], latest_blockhash);
     banks_client.process_transaction(buy_tx).await?;
     
+    // 8. Derive recipient ATA and Craft Claim instruction.
+    // I decided not to force the instruction to always interpriate `signer` as the `recipient`,
+    // so the caller can pass any valid `recipient` and `recipient_ata` beside `signer` and `signer_ata`.
+    // 8.1 Recipient is a new wallet
+    let _new_wallet: Pubkey = Pubkey::new_unique();
+    // let claim_ix: Instruction = craft_claim_ix(&payer_pkey, &_new_wallet, &vesting_account, &treasury_pda, &config_pda, &mint_pkey);
+    
+    // 8.2 Recipient is a signer
+    let claim_ix: Instruction = craft_claim_ix(&payer_pkey, &payer_pkey, &vesting_account, &treasury_pda, &config_pda, &mint_pkey);
+
+    // 9. Craft Claim transaction
+    let message: Message = Message::new(&[claim_ix], Some(&payer_pkey));
+    let mut claim_tx: Transaction = Transaction::new_unsigned(message);
+
+    // 10. Sign Claim tx and send it 
+    claim_tx.sign(&[&payer], latest_blockhash);
+    banks_client.process_transaction(claim_tx).await?;
+
     Ok(())
+}
+
+fn craft_claim_ix(
+    signer: &Pubkey, 
+    recipient: &Pubkey, 
+    vesting_account: &Pubkey, 
+    treasury_pda: &Pubkey,
+    config_pda: &Pubkey,
+    mint_pkey: &Pubkey
+) -> Instruction {
+    let recipient_ata: Pubkey = Pubkey::find_program_address(
+        &[
+            recipient.as_ref(),
+            SPL_TOKEN_2022_ID.as_ref(),
+            mint_pkey.as_ref()
+        ], 
+        &ATA_PROGRAM_ID
+    ).0;
+
+    Instruction::new_with_bytes(
+        IDO_PROGRAM_ID, 
+        &[2],  // IDOInstruction::Claim 
+        vec![
+            AccountMeta::new(*signer, true),
+            AccountMeta::new_readonly(*recipient, false),
+            AccountMeta::new(recipient_ata, false),
+            AccountMeta::new(*vesting_account, false),
+            AccountMeta::new(*treasury_pda, false),
+            AccountMeta::new_readonly(*config_pda, false),
+            AccountMeta::new_readonly(*mint_pkey, false),
+            AccountMeta::new_readonly(ATA_PROGRAM_ID, false),
+            AccountMeta::new_readonly(SPL_TOKEN_2022_ID, false),
+            AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false)
+        ]
+    )
 }

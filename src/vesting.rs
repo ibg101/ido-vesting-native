@@ -1,5 +1,6 @@
 use solana_program::{sysvar::clock::Clock, entrypoint::ProgramResult};
 use super::{
+    state::IDOVestingAccount,
     error::IDOProgramError,
     constants::MAX_UNLOCKS
 };
@@ -95,4 +96,62 @@ impl LinearVestingStrategy {
     ) -> Self {
         Self::new(None, vesting_duration, unlock_period)
     }
+}
+
+/// TODO: i'd like to refactor this fn later 
+
+/// This function handles most of the business logic.
+/// However i didn't decide to delegate transfering tokens to this fn, so it must be implemented externally.
+/// 
+/// This fn has the following flow. Checks for:
+/// 1. Cliff Period is active => returns `IDOProgramError::CliffIsActive`.
+/// 2. Vesting Period is over => returns the `left_transfer_portion`.
+/// 3. First OR next Unlock is reached => returns the `transfer_portion` that's calculated based on `unlocked_times`.
+/// 
+/// Otherwise Vesting is still considered active and the appropriated error is returned.
+pub fn allow_claim_and_define_portion(
+    clock: &Clock,
+    vesting_strategy: &LinearVestingStrategy,
+    vesting_account: &mut IDOVestingAccount
+) -> Result<u64, IDOProgramError> {
+    let now_ts: i64 = clock.unix_timestamp;
+    let LinearVestingStrategy { cliff_end_ts, vesting_end_ts, unlock_period } = *vesting_strategy;
+
+    if now_ts < cliff_end_ts {
+        return Err(IDOProgramError::CliffIsActive);
+    }
+
+    let bought_amount: u64 = vesting_account.bought_amount;
+
+    // vesting period is over
+    if now_ts >= vesting_end_ts {
+        let left_transfer_portion: u64 = bought_amount - vesting_account.claimed_amount;
+        vesting_account.claimed_amount += left_transfer_portion;
+        return Ok(left_transfer_portion);
+    }
+    
+    let last_claim_ts: i64 = vesting_account.last_claim_ts;
+    let never_claimed: bool = last_claim_ts == 0;
+
+    // first claim OR new portion is available to be claimed
+    if never_claimed
+    || now_ts >= last_claim_ts + unlock_period {
+        let vesting_ends_in: i64 = vesting_end_ts - now_ts;
+        let vesting_duration: i64 = vesting_end_ts - cliff_end_ts;
+        let time_passed: i64 = vesting_duration - vesting_ends_in;
+        let unlocked_times: i64 = if never_claimed {
+            // if cliff has ended and user tries to immediately claim the tokens and next unlock period is not reached yet,
+            // omitting max(1) will cause multiplying by 0 bug
+            (time_passed / unlock_period).max(1)
+        } else {
+            time_passed / unlock_period
+        };
+        let transfer_portion: u64 = vesting_account.amount_per_unlock * unlocked_times as u64;
+
+        vesting_account.last_claim_ts = now_ts;
+        vesting_account.claimed_amount += transfer_portion;
+        return Ok(transfer_portion);
+    }
+
+    Err(IDOProgramError::VestingIsActive)    
 }

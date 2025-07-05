@@ -1,3 +1,7 @@
+use ido_with_vesting::{
+    utils::derive_ata,
+    external_ids::ATA_PROGRAM_ID
+};
 use solana_program_test::{
     BanksClient, 
     BanksClientError, 
@@ -22,8 +26,6 @@ use solana_sdk::{
     signer::{Signer, keypair::Keypair}
 };
 
-
-const ATA_PROGRAM_ID: Pubkey = Pubkey::from_str_const("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
 
 pub trait BanksClientExt {    
     /// Creates & sends `system_transaction::create_account()` Transaction.
@@ -65,17 +67,6 @@ impl BanksClientExt for BanksClient {
             Ok(new_keypair)
         }
     }
-}
-
-pub fn derive_ata(wallet_pkey: &Pubkey, mint_pkey: &Pubkey) -> (Pubkey, u8) {
-    Pubkey::find_program_address(
-        &[
-            wallet_pkey.as_ref(),
-            SPL_TOKEN_2022_ID.as_ref(),
-            mint_pkey.as_ref()
-        ], 
-        &ATA_PROGRAM_ID
-    )
 }
 
 pub mod spl_token_manipulations {

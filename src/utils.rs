@@ -1,5 +1,12 @@
-use solana_program::program_error::ProgramError;
-use super::vesting::LinearVestingStrategy;
+use solana_program::{
+    pubkey::Pubkey,
+    program_error::ProgramError
+};
+use spl_token_2022::ID as SPL_TOKEN_2022_ID;
+use super::{
+    external_ids::ATA_PROGRAM_ID,
+    vesting::LinearVestingStrategy
+};
 
 
 pub trait ReadBytes {
@@ -101,4 +108,25 @@ pub fn read_linear_vesting_strategy_slice(data: &[u8], start: usize) -> Result<L
         vesting_end_ts: read_i64_slice(data, start + 8)?,
         unlock_period: read_i64_slice(data, start + 16)?
     })
+}
+
+/// Note, this method derives only PDA that are owned by the current program.
+/// ### `program_id = ido_with_vesting::ID`
+pub fn derive_program_pda(seeds: &[&[u8]]) -> (Pubkey, u8) {
+    Pubkey::find_program_address(
+        seeds, 
+        &crate::ID
+    )
+}
+
+/// if spl_associated_token_account crate is added => remove this
+pub fn derive_ata(wallet_pkey: &Pubkey, mint_pkey: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(
+        &[
+            wallet_pkey.as_ref(),
+            SPL_TOKEN_2022_ID.as_ref(),
+            mint_pkey.as_ref()
+        ], 
+        &ATA_PROGRAM_ID
+    )
 }

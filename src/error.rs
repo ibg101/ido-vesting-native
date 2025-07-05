@@ -13,7 +13,8 @@ pub enum IDOProgramError {
     CliffPeriodMustBeGreaterThanNow,
     VestingPeriodMustBeGreaterThanCliff,
     AlreadyClaimed,
-    VestingPeriodEnded
+    VestingPeriodEnded,
+    ClaimBeforeBuy
 }
 
 impl Error for IDOProgramError {}
@@ -28,7 +29,8 @@ impl std::fmt::Display for IDOProgramError {
             Self::CliffPeriodMustBeGreaterThanNow => "Cliff Period must be greater than Current Timestamp.",
             Self::VestingPeriodMustBeGreaterThanCliff => "Vesting Period must be greater than Cliff Period.",
             Self::AlreadyClaimed => "Already claimed! No tokens to claim.",
-            Self::VestingPeriodEnded => "Vesting Period has ended!"
+            Self::VestingPeriodEnded => "Vesting Period has ended!",
+            Self::ClaimBeforeBuy => "You must buy tokens first before invoking claim instruction."
         };
 
         f.write_str(msg)
