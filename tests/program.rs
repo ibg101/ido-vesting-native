@@ -7,7 +7,8 @@ use ido_with_vesting::{
     vesting::LinearVestingStrategy,
     constants::{
         IDO_CONFIG_ACCOUNT_SEED, 
-        IDO_TREASURY_ACCOUNT_SEED
+        IDO_TREASURY_ACCOUNT_SEED,
+        IDO_VESTING_ACCOUNT_SEED
     }
 };
 
@@ -48,7 +49,7 @@ async fn test_initialize_ido_with_vesting_ix() -> Result<(), BanksClientError> {
     let prelude: Prelude = Prelude::init(&banks_client, &payer, &payer_pkey, &latest_blockhash, &rent);
     let (mint_pkey, ata_pda) = prelude.create_mint_and_funded_ata().await?;
 
-    // // 1. Craft instruction
+    // // 1. Craft InitializeIDOWithVesting instruction
     let transfer_amount: u64 = 1_000_000_000;
     let lamports_per_token: u32 = 1_000;
     let vesting_strategy: LinearVestingStrategy = LinearVestingStrategy::new_without_cliff(
@@ -71,15 +72,15 @@ async fn test_initialize_ido_with_vesting_ix() -> Result<(), BanksClientError> {
         &IDO_PROGRAM_ID
     ).0;
 
-    let mut ix_payload: Vec<u8> = Vec::with_capacity(37);         
-    ix_payload.push(0);  // IDOInstruction::InitializeWithVesting
-    ix_payload.extend_from_slice(&transfer_amount.to_le_bytes());
-    ix_payload.extend_from_slice(&lamports_per_token.to_le_bytes());
-    ix_payload.extend_from_slice(vesting_strategy.as_ref());
+    let mut init_ix_payload: Vec<u8> = Vec::with_capacity(37);         
+    init_ix_payload.push(0);  // IDOInstruction::InitializeWithVesting
+    init_ix_payload.extend_from_slice(&transfer_amount.to_le_bytes());
+    init_ix_payload.extend_from_slice(&lamports_per_token.to_le_bytes());
+    init_ix_payload.extend_from_slice(vesting_strategy.as_ref());
 
     let initialize_ido_ix: Instruction = Instruction::new_with_bytes(
         IDO_PROGRAM_ID, 
-        &ix_payload, 
+        &init_ix_payload, 
         vec![
             AccountMeta::new(payer_pkey, true),
             AccountMeta::new(ata_pda, false),
@@ -92,13 +93,51 @@ async fn test_initialize_ido_with_vesting_ix() -> Result<(), BanksClientError> {
         ]
     );
 
-    // 2. Craft transaction
+    // 2. Craft InitializeIDOWithVesting transaction
     let message: Message = Message::new(&[initialize_ido_ix], Some(&payer_pkey));
     let mut initialize_ido_tx: Transaction = Transaction::new_unsigned(message);
 
-    // 3. Sign tx and send it
-    initialize_ido_tx.sign(&[payer], latest_blockhash);
+    // 3. Sign InitializeIDOWithVesting tx and send it
+    initialize_ido_tx.sign(&[&payer], latest_blockhash);
     banks_client.process_transaction(initialize_ido_tx).await?;
 
+    // 4. Derive VestingAccount PDA
+    let (vesting_account, _vesting_bump) = Pubkey::find_program_address(
+        &[
+            IDO_VESTING_ACCOUNT_SEED,
+            payer_pkey.as_ref(),
+            mint_pkey.as_ref()
+        ], 
+        &IDO_PROGRAM_ID
+    );
+
+    // 5. Craft BuyWithVesting instruction
+    let buy_amount: u64 = 17_000_000;
+
+    let mut buy_ix_payload: Vec<u8> = Vec::with_capacity(9);
+    buy_ix_payload.push(1); 
+    buy_ix_payload.extend_from_slice(&buy_amount.to_le_bytes());
+
+    let buy_ix: Instruction = Instruction::new_with_bytes(
+        IDO_PROGRAM_ID, 
+        &buy_ix_payload, 
+        vec![
+            AccountMeta::new(payer_pkey, true),
+            AccountMeta::new(vesting_account, false),
+            AccountMeta::new(treasury_pda, false),
+            AccountMeta::new_readonly(config_pda, false),
+            AccountMeta::new_readonly(mint_pkey, false),
+            AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false)
+        ]
+    );
+
+    // 6. Craft BuyWithVesting transaction
+    let message: Message = Message::new(&[buy_ix], Some(&payer_pkey));
+    let mut buy_tx: Transaction = Transaction::new_unsigned(message);
+
+    // 7. Sign BuyWithVesting tx and send it
+    buy_tx.sign(&[&payer], latest_blockhash);
+    banks_client.process_transaction(buy_tx).await?;
+    
     Ok(())
 }

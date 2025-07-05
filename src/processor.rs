@@ -16,7 +16,7 @@ use spl_token_2022::state::{Account, Mint};
 use super::{
     accounts::{
         IDOInitializeIxAccounts, 
-        IDOBuyWithVesting
+        IDOBuyWithVestingAccounts
     },
     constants::*,
     instruction::IDOInstruction,
@@ -80,23 +80,23 @@ impl Processor {
         // 2. Check that the provided accounts are deterministic PDA
         let mint_pkey_bytes: &[u8] = mint_info.key.as_ref();
 
-        let (treasury_ata, treasury_bump) = Pubkey::find_program_address(&[
+        let (expected_treasury_ata, treasury_bump) = Pubkey::find_program_address(&[
             IDO_TREASURY_ACCOUNT_SEED, 
             mint_pkey_bytes
         ], program_id);
 
-        if *treasury_info.key != treasury_ata {
+        if *treasury_info.key != expected_treasury_ata {
             return Err(ProgramError::InvalidInstructionData);
         }
 
-        let treasury_pkey_bytes: &[u8] = treasury_ata.as_ref();
+        let treasury_pkey_bytes: &[u8] = expected_treasury_ata.as_ref();
 
-        let (config_pda, config_bump) = Pubkey::find_program_address(&[
+        let (expected_config_pda, config_bump) = Pubkey::find_program_address(&[
             IDO_CONFIG_ACCOUNT_SEED, 
             treasury_pkey_bytes
         ], program_id);
 
-        if *config_info.key != config_pda {
+        if *config_info.key != expected_config_pda {
             return Err(ProgramError::InvalidInstructionData);
         }
 
@@ -198,7 +198,7 @@ impl Processor {
         amount: u64
     ) -> ProgramResult {
         // 1. Check ownership & vesting account deterministic derivation; Validate that the authority & mint of treasury ATA
-        let IDOBuyWithVesting { 
+        let IDOBuyWithVestingAccounts { 
             signer_info, 
             vesting_info, 
             treasury_info, 
@@ -211,7 +211,7 @@ impl Processor {
             signer_info.key.as_ref(),
             mint_info.key.as_ref()
         );
-        let (vesting_pda, vesting_bump) = Pubkey::find_program_address(
+        let (expected_vesting_pda, vesting_bump) = Pubkey::find_program_address(
             &[
                 IDO_VESTING_ACCOUNT_SEED,
                 signer_pkey_bytes,
@@ -219,11 +219,18 @@ impl Processor {
             ], 
             program_id
         );
+        let (expected_config_pda, _config_bump) = Pubkey::find_program_address(
+            &[
+                IDO_CONFIG_ACCOUNT_SEED,
+                treasury_info.key.as_ref()
+            ], 
+            program_id
+        );
 
         let treasury_ata: Account = Account::unpack(*treasury_info.data.borrow())?;
 
-        if config_info.owner != program_id
-        || vesting_pda != *vesting_info.key
+        if expected_vesting_pda != *vesting_info.key
+        || expected_config_pda != *config_info.key
         || treasury_ata.mint != *mint_info.key
         || treasury_ata.owner != *treasury_info.key
         {
@@ -254,7 +261,7 @@ impl Processor {
             let vesting_rent_exempt: u64 = rent.minimum_balance(IDOVestingAccount::LEN);
             let create_vesting_account_ix: Instruction = system_instruction::create_account(
                 signer_info.key, 
-                &vesting_pda, 
+                &expected_vesting_pda, 
                 vesting_rent_exempt, 
                 IDOVestingAccount::LEN as u64, 
                 program_id
@@ -279,7 +286,7 @@ impl Processor {
 
         // IMPROTANT: this code of block must be located below step 3, because we have to know the updated `signer_info.lamports` balance.
         // 
-        // 5. Check if `signer` lamports balance is not lower than the required amount.
+        // 5. Check if `signer` lamports balance is not smaller than the required amount.
         // SystemProgram owned accounts have data len == 0 bytes.
         let signers_balance_without_rent: u64 = signer_info.lamports()
             .checked_sub(rent.minimum_balance(0))
@@ -305,4 +312,10 @@ impl Processor {
 
         Ok(())
     }
+
+    // fn process_claim_instruction(
+
+    // ) -> ProgramResult {
+    //     // check PDA (vesting, )
+    // }
 }
