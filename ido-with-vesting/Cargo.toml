@@ -1,0 +1,32 @@
+[package]
+name = "ido-with-vesting"
+version = "0.1.0"
+edition = "2021"
+authors = ["Ivan Bets <ivan.bets17@gmail.com>"]
+
+[dependencies]
+solana-program = "2.3.0"
+spl-token-2022 = { version = "9.0.0", features = ["no-entrypoint"] }
+
+[dev-dependencies]
+solana-sdk = "2.3.1"
+solana-program-test = "2.3.1"
+solana-client = "2.3.1"
+tokio = { version = "1.45.1", features = ["macros", "rt-multi-thread"] }
+mint-fixture = { path = "../mint-fixture" }
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[features]
+program-test = ["ergonomic-init", "instruction"]
+ergonomic-init = []
+instruction = []
+
+[[example]]
+name = "client"
+path = "examples/client.rs"
+
+[[test]]
+name = "program"
+path = "tests/program.rs"

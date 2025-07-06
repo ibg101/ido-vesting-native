@@ -1,10 +1,13 @@
-mod utils;
-use utils::spl_token_manipulations::Prelude;
-
+use mint_fixture::{
+    MintFixture,
+    MintFixtureClient,
+    MintFixtureError,
+};
 use ido_with_vesting::{
     ID as IDO_PROGRAM_ID,
     external_ids::ATA_PROGRAM_ID,
     entrypoint,
+    instruction,
     utils::derive_program_pda,
     vesting::LinearVestingStrategy,
     constants::{
@@ -21,21 +24,18 @@ use solana_program_test::{
     processor
 };
 use solana_program::{
-    system_program::ID as SYSTEM_PROGRAM_ID,
     rent::Rent,
     pubkey::Pubkey,
-    instruction::{AccountMeta, Instruction},
+    instruction::Instruction,
 };
 use solana_sdk::{
     message::Message,
     transaction::Transaction,
-    sysvar::SysvarId,
     signer::Signer
 };
 
 
 #[tokio::test]
-// async fn test_initialize_ido_with_vesting_ix() -> Result<(), BanksClientError> {
 async fn test_all_instructions() -> Result<(), BanksClientError> {
     // spl token 2022 is preloaded automatically, so there is no need to explicitly add_program with spl-token-2022 binary
     let program: ProgramTest = ProgramTest::new(
@@ -49,11 +49,24 @@ async fn test_all_instructions() -> Result<(), BanksClientError> {
     let rent: Rent = banks_client.get_sysvar::<Rent>().await?;
 
     // 0. Create & Initialize Mint Account; Create & Initialize ATA; Mint tokens to ATA
-    let prelude: Prelude = Prelude::init(&banks_client, &payer, &payer_pkey, &latest_blockhash, &rent);
-    let (mint_pkey, ata_pda) = prelude.create_mint_and_funded_ata().await?;
+    let mint_fixture: MintFixture = MintFixture::new(
+        MintFixtureClient::Banks(&banks_client),
+        &payer,
+        &payer_pkey,
+        &latest_blockhash,
+        &rent
+    );
+    let mint_decimals: u8 = 9;
+    let mint_amount: u64 = 1_000_000_000;
+    let (mint_pkey, ata_pda) = mint_fixture.create_mint_and_funded_ata(mint_decimals, mint_amount)
+        .await
+        .map_err(|e| match e {
+            MintFixtureError::Banks(e) => e,
+            _ => panic!("Expected BanksClient, got RpcClient!")
+        })?;
 
     // // 1. Craft InitializeIDOWithVesting instruction
-    let transfer_amount: u64 = 1_000_000_000;
+    let transfer_amount: u64 = mint_amount;  // so we transfer the whole supply to the IDO
     let lamports_per_token: u32 = 1_000;
     let vesting_strategy: LinearVestingStrategy = LinearVestingStrategy::new_without_cliff(
         60 * 5,  // 5 minutes vesting
@@ -69,25 +82,15 @@ async fn test_all_instructions() -> Result<(), BanksClientError> {
         treasury_pda.as_ref()
     ]).0;
 
-    let mut init_ix_payload: Vec<u8> = Vec::with_capacity(37);         
-    init_ix_payload.push(0);  // IDOInstruction::InitializeWithVesting
-    init_ix_payload.extend_from_slice(&transfer_amount.to_le_bytes());
-    init_ix_payload.extend_from_slice(&lamports_per_token.to_le_bytes());
-    init_ix_payload.extend_from_slice(vesting_strategy.as_ref());
-
-    let initialize_ido_ix: Instruction = Instruction::new_with_bytes(
-        IDO_PROGRAM_ID, 
-        &init_ix_payload, 
-        vec![
-            AccountMeta::new(payer_pkey, true),
-            AccountMeta::new(ata_pda, false),
-            AccountMeta::new(treasury_pda, false),
-            AccountMeta::new(config_pda, false),
-            AccountMeta::new_readonly(mint_pkey, false),
-            AccountMeta::new_readonly(Rent::id(), false),
-            AccountMeta::new_readonly(SPL_TOKEN_2022_ID, false),
-            AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false)
-        ]
+    let initialize_ido_ix: Instruction = instruction::create_initialize_with_vesting(
+        transfer_amount, 
+        lamports_per_token, 
+        &vesting_strategy, 
+        &payer_pkey, 
+        &ata_pda, 
+        &treasury_pda, 
+        &config_pda, 
+        &mint_pkey
     );
 
     // 2. Craft InitializeIDOWithVesting transaction
@@ -111,21 +114,13 @@ async fn test_all_instructions() -> Result<(), BanksClientError> {
     // 5. Craft BuyWithVesting instruction
     let buy_amount: u64 = 17_000_000;
 
-    let mut buy_ix_payload: Vec<u8> = Vec::with_capacity(9);
-    buy_ix_payload.push(1); 
-    buy_ix_payload.extend_from_slice(&buy_amount.to_le_bytes());
-
-    let buy_ix: Instruction = Instruction::new_with_bytes(
-        IDO_PROGRAM_ID, 
-        &buy_ix_payload, 
-        vec![
-            AccountMeta::new(payer_pkey, true),
-            AccountMeta::new(vesting_account, false),
-            AccountMeta::new(treasury_pda, false),
-            AccountMeta::new_readonly(config_pda, false),
-            AccountMeta::new_readonly(mint_pkey, false),
-            AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false)
-        ]
+    let buy_ix: Instruction = instruction::create_buy_with_vesting(
+        buy_amount, 
+        &payer_pkey, 
+        &vesting_account, 
+        &treasury_pda, 
+        &config_pda, 
+        &mint_pkey
     );
 
     // 6. Craft BuyWithVesting transaction
@@ -140,11 +135,43 @@ async fn test_all_instructions() -> Result<(), BanksClientError> {
     // I decided not to force the instruction to always interpriate `signer` as the `recipient`,
     // so the caller can pass any valid `recipient` and `recipient_ata` beside `signer` and `signer_ata`.
     // 8.1 Recipient is a new wallet
-    let _new_wallet: Pubkey = Pubkey::new_unique();
-    // let claim_ix: Instruction = craft_claim_ix(&payer_pkey, &_new_wallet, &vesting_account, &treasury_pda, &config_pda, &mint_pkey);
-    
+    let new_wallet: Pubkey = Pubkey::new_unique();
+    let recipient_ata: Pubkey = Pubkey::find_program_address(
+        &[
+            new_wallet.as_ref(),
+            SPL_TOKEN_2022_ID.as_ref(),
+            mint_pkey.as_ref()
+        ], 
+        &ATA_PROGRAM_ID
+    ).0;
+    let claim_ix: Instruction = instruction::create_claim(
+        &payer_pkey, 
+        &new_wallet, 
+        &recipient_ata, 
+        &vesting_account, 
+        &treasury_pda, 
+        &config_pda, 
+        &mint_pkey
+    );
+
     // 8.2 Recipient is a signer
-    let claim_ix: Instruction = craft_claim_ix(&payer_pkey, &payer_pkey, &vesting_account, &treasury_pda, &config_pda, &mint_pkey);
+    // let recipient_ata: Pubkey = Pubkey::find_program_address(
+    //     &[
+    //         payer_pkey.as_ref(),
+    //         SPL_TOKEN_2022_ID.as_ref(),
+    //         mint_pkey.as_ref()
+    //     ], 
+    //     &ATA_PROGRAM_ID
+    // ).0;
+    // let claim_ix: Instruction = instruction::create_claim(
+    //     &payer_pkey, 
+    //     &payer_pkey, 
+    //     &recipient_ata, 
+    //     &vesting_account, 
+    //     &treasury_pda, 
+    //     &config_pda, 
+    //     &mint_pkey
+    // );
 
     // 9. Craft Claim transaction
     let message: Message = Message::new(&[claim_ix], Some(&payer_pkey));
@@ -155,39 +182,4 @@ async fn test_all_instructions() -> Result<(), BanksClientError> {
     banks_client.process_transaction(claim_tx).await?;
 
     Ok(())
-}
-
-fn craft_claim_ix(
-    signer: &Pubkey, 
-    recipient: &Pubkey, 
-    vesting_account: &Pubkey, 
-    treasury_pda: &Pubkey,
-    config_pda: &Pubkey,
-    mint_pkey: &Pubkey
-) -> Instruction {
-    let recipient_ata: Pubkey = Pubkey::find_program_address(
-        &[
-            recipient.as_ref(),
-            SPL_TOKEN_2022_ID.as_ref(),
-            mint_pkey.as_ref()
-        ], 
-        &ATA_PROGRAM_ID
-    ).0;
-
-    Instruction::new_with_bytes(
-        IDO_PROGRAM_ID, 
-        &[2],  // IDOInstruction::Claim 
-        vec![
-            AccountMeta::new(*signer, true),
-            AccountMeta::new_readonly(*recipient, false),
-            AccountMeta::new(recipient_ata, false),
-            AccountMeta::new(*vesting_account, false),
-            AccountMeta::new(*treasury_pda, false),
-            AccountMeta::new_readonly(*config_pda, false),
-            AccountMeta::new_readonly(*mint_pkey, false),
-            AccountMeta::new_readonly(ATA_PROGRAM_ID, false),
-            AccountMeta::new_readonly(SPL_TOKEN_2022_ID, false),
-            AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false)
-        ]
-    )
 }

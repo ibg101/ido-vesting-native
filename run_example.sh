@@ -1,0 +1,1 @@
+cargo run --manifest-path ido-with-vesting/Cargo.toml --example client

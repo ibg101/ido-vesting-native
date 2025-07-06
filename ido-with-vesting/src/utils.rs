@@ -2,11 +2,7 @@ use solana_program::{
     pubkey::Pubkey,
     program_error::ProgramError
 };
-use spl_token_2022::ID as SPL_TOKEN_2022_ID;
-use super::{
-    external_ids::ATA_PROGRAM_ID,
-    vesting::LinearVestingStrategy
-};
+use super::vesting::LinearVestingStrategy;
 
 
 pub trait ReadBytes {
@@ -116,17 +112,5 @@ pub fn derive_program_pda(seeds: &[&[u8]]) -> (Pubkey, u8) {
     Pubkey::find_program_address(
         seeds, 
         &crate::ID
-    )
-}
-
-/// if spl_associated_token_account crate is added => remove this
-pub fn derive_ata(wallet_pkey: &Pubkey, mint_pkey: &Pubkey) -> (Pubkey, u8) {
-    Pubkey::find_program_address(
-        &[
-            wallet_pkey.as_ref(),
-            SPL_TOKEN_2022_ID.as_ref(),
-            mint_pkey.as_ref()
-        ], 
-        &ATA_PROGRAM_ID
     )
 }

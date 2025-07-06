@@ -65,7 +65,7 @@ impl LinearVestingStrategy {
         }
     }
 
-    #[cfg(feature = "program-test")]
+    #[cfg(feature = "ergonomic-init")]
     /// All arguments must be represented as seconds.
     pub fn new(
         cliff_duration: Option<i64>, 
@@ -89,7 +89,7 @@ impl LinearVestingStrategy {
         }
     }
 
-    #[cfg(feature = "program-test")]
+    #[cfg(feature = "ergonomic-init")]
     pub fn new_without_cliff(
         vesting_duration: i64,
         unlock_period: i64

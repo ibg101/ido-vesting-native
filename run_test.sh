@@ -1,0 +1,1 @@
+cargo test-sbf --manifest-path ido-with-vesting/Cargo.toml --features program-test -- --nocapture

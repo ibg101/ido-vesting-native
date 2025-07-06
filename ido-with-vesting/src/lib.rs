@@ -11,7 +11,7 @@ pub mod utils;
 use solana_program::{declare_id, pubkey::Pubkey};
 
 
-declare_id!("14oAioJ9zypo5Q6CV9Wtuvyv8HiyQE2PvTfJYKik55im");
+declare_id!("BhMF5PU37Ssyjwjp4FmHufc1b1pYZXZrRmNP4kV3fFc5");
 
 /// This module is used for external Program ID's declaration.
 /// 
