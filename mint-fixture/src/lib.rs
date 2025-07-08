@@ -47,6 +47,16 @@ impl From<BanksClientError> for MintFixtureError {
     }
 }
 
+impl std::error::Error for MintFixtureError {}
+impl std::fmt::Display for MintFixtureError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Banks(err) => write!(f, "{}", err),
+            Self::Client(err) => write!(f, "{}", err)
+        }
+    }
+}
+
 pub enum MintFixtureClient<'a> {
     Rpc(&'a RpcClient),
     Banks(&'a BanksClient),
@@ -56,7 +66,6 @@ pub struct MintFixture<'a> {
     client: MintFixtureClient<'a>,
     payer: &'a Keypair,
     payer_pkey: &'a Pubkey,
-    latest_blockhash: &'a Hash,
     rent: &'a Rent
 }
 
@@ -65,29 +74,19 @@ impl<'a> MintFixture<'a> {
         client: MintFixtureClient<'a>,
         payer: &'a Keypair,
         payer_pkey: &'a Pubkey,
-        latest_blockhash: &'a Hash,
         rent: &'a Rent 
-    ) -> Self {
-        Self { client, payer, payer_pkey, latest_blockhash, rent }
+    ) -> Self {        
+        Self { client, payer, payer_pkey, rent }
     }
-
-    /// `mint_amount` - for example: 1_000_000_000
-    pub async fn create_mint_and_funded_ata(&self, mint_decimals: u8, mint_amount: u64) -> Result<(Pubkey, Pubkey), MintFixtureError> {
-        let mint_pkey: Pubkey = self.create_and_intiialize_mint(mint_decimals).await?;
-        let ata_pda: Pubkey = self.create_and_intiialize_ata(&mint_pkey).await?;
-        self.mint_to_ata(&mint_pkey, &ata_pda, mint_amount).await?;
-
-        Ok((mint_pkey, ata_pda))
-    }
-
-    pub async fn create_and_intiialize_mint(&self, mint_decimals: u8) -> Result<Pubkey, MintFixtureError> {
+    
+    pub async fn create_and_intiialize_mint(&self, mint_decimals: u8, latest_blockhash: &Hash) -> Result<Pubkey, MintFixtureError> {
         // 1. create account using system program
         let mint_keypair: Keypair = Keypair::new();
 
         let create_tx: Transaction = system_transaction::create_account(
             self.payer, 
             &mint_keypair, 
-            *self.latest_blockhash, 
+            *latest_blockhash, 
             self.rent.minimum_balance(Mint::LEN), 
             Mint::LEN as u64, 
             &SPL_TOKEN_2022_ID
@@ -108,13 +107,13 @@ impl<'a> MintFixture<'a> {
         let mut initialize_mint_tx: Transaction = Transaction::new_unsigned(message);
         
         // 2.2 sign & send tx
-        initialize_mint_tx.sign(&[self.payer], *self.latest_blockhash);
+        initialize_mint_tx.sign(&[self.payer], *latest_blockhash);
         self.process_transaction(initialize_mint_tx).await?;
 
         Ok(mint_keypair.pubkey())
     }
 
-    pub async fn create_and_intiialize_ata(&self, mint_pkey: &Pubkey) -> Result<Pubkey, MintFixtureError> {
+    pub async fn create_and_intiialize_ata(&self, mint_pkey: &Pubkey, latest_blockhash: &Hash) -> Result<Pubkey, MintFixtureError> {
         let ata_pda: Pubkey = Pubkey::find_program_address(
             &[
                 self.payer_pkey.as_ref(),
@@ -140,16 +139,22 @@ impl<'a> MintFixture<'a> {
         let message: Message = Message::new(&[create_ata_ix], Some(self.payer_pkey));
         let mut create_ata_tx: Transaction = Transaction::new_unsigned(message); 
 
-        create_ata_tx.sign(&[self.payer], *self.latest_blockhash);
+        create_ata_tx.sign(&[self.payer], *latest_blockhash);
         self.process_transaction(create_ata_tx).await?;
 
         Ok(ata_pda)
     }
 
-    pub async fn mint_to_ata(&self, mint_pkey: &Pubkey, ata_pda: &Pubkey, mint_amount: u64) -> Result<(), MintFixtureError> {
+    pub async fn mint_to_ata(
+        &self, 
+        mint_pkey: &Pubkey, 
+        ata_pda: &Pubkey, 
+        mint_amount: u64,
+        latest_blockhash: &Hash
+    ) -> Result<(), MintFixtureError> {
         let mut mint_to_ix_payload: Vec<u8> = Vec::with_capacity(9);
         mint_to_ix_payload.push(7);
-        mint_to_ix_payload.extend_from_slice(&u64::to_le_bytes(mint_amount)); 
+        mint_to_ix_payload.extend_from_slice(&u64::to_le_bytes(mint_amount));
         
         let mint_to_ix: Instruction = Instruction::new_with_bytes(
             SPL_TOKEN_2022_ID, 
@@ -163,7 +168,7 @@ impl<'a> MintFixture<'a> {
         let message: Message = Message::new(&[mint_to_ix], Some(self.payer_pkey));
         let mut mint_to_tx: Transaction = Transaction::new_unsigned(message);
 
-        mint_to_tx.sign(&[self.payer], *self.latest_blockhash);
+        mint_to_tx.sign(&[self.payer], *latest_blockhash);
         self.process_transaction(mint_to_tx).await?;
 
         Ok(())

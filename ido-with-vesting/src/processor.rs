@@ -240,8 +240,14 @@ impl Processor {
             return Err(ProgramError::InvalidInstructionData);
         }
 
-        // 3. Get `lamports_per_token` from Config PDA & `calculate lamports_transfer_amount`
+        // 3. Get `lamports_per_token` from Config PDA & check whether the vesting is over or not & `calculate lamports_transfer_amount`
+        let clock: Clock = Clock::get()?;
         let config_account: IDOConfigAccount = IDOConfigAccount::unpack(*config_info.data.borrow())?;
+        
+        if config_account.vesting_strategy.vesting_end_ts <= clock.unix_timestamp {
+            return Err(IDOProgramError::VestingPeriodEnded.into());
+        }
+
         let lamports_transfer_amount: u64 = amount * config_account.lamports_per_token as u64;
         let rent: Rent = Rent::get()?;
 
@@ -252,7 +258,7 @@ impl Processor {
             IDOVestingAccount::unpack(*vesting_data_ref)
         };
         
-        if let Ok(mut vesting_account) = maybe_vesting_account {        
+        if let Ok(mut vesting_account) = maybe_vesting_account {
             let updated_bought_amount: u64 = vesting_account.bought_amount
                 .checked_add(amount)
                 .ok_or(ProgramError::ArithmeticOverflow)?;
@@ -375,7 +381,7 @@ impl Processor {
         let clock: Clock = Clock::get()?;
         let vesting_strategy: LinearVestingStrategy = config_account.vesting_strategy;
         
-        let transfer_amount: u64 = allow_claim_and_define_portion(
+        let raw_transfer_amount: u64 = allow_claim_and_define_portion(
             &clock, 
             &vesting_strategy, 
             &mut vesting_account
@@ -413,6 +419,8 @@ impl Processor {
 
         // 4. Transfer `transfer_amount` to `recipient_ata`
         let mint_account: Mint = Mint::unpack(*mint_info.data.borrow())?;
+        let mint_decimals: u8 = mint_account.decimals;
+        let transfer_amount: u64 = raw_transfer_amount * 10u64.pow(mint_decimals as u32);
 
         let transfer_checked_ix: Instruction = spl_token_2022::instruction::transfer_checked(
             token_program_info.key, 
@@ -422,7 +430,7 @@ impl Processor {
             treasury_info.key, 
             &[], 
             transfer_amount, 
-            mint_account.decimals
+            mint_decimals
         )?;
         invoke_signed(
             &transfer_checked_ix, 

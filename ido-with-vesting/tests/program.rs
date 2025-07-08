@@ -20,7 +20,6 @@ use ido_with_vesting::{
 use spl_token_2022::ID as SPL_TOKEN_2022_ID;
 use solana_program_test::{
     ProgramTest,
-    BanksClientError,
     processor
 };
 use solana_program::{
@@ -36,7 +35,7 @@ use solana_sdk::{
 
 
 #[tokio::test]
-async fn test_all_instructions() -> Result<(), BanksClientError> {
+async fn test_all_instructions() -> Result<(), MintFixtureError> {
     // spl token 2022 is preloaded automatically, so there is no need to explicitly add_program with spl-token-2022 binary
     let program: ProgramTest = ProgramTest::new(
         "ido_with_vesting", 
@@ -53,17 +52,15 @@ async fn test_all_instructions() -> Result<(), BanksClientError> {
         MintFixtureClient::Banks(&banks_client),
         &payer,
         &payer_pkey,
-        &latest_blockhash,
         &rent
     );
     let mint_decimals: u8 = 9;
-    let mint_amount: u64 = 1_000_000_000;
-    let (mint_pkey, ata_pda) = mint_fixture.create_mint_and_funded_ata(mint_decimals, mint_amount)
-        .await
-        .map_err(|e| match e {
-            MintFixtureError::Banks(e) => e,
-            _ => panic!("Expected BanksClient, got RpcClient!")
-        })?;
+    let mint_raw_amount: u64 = 1_000_000_000;
+    let mint_amount: u64 = mint_raw_amount * 10u64.pow(mint_decimals as u32);  // might cause error
+
+    let mint_pkey: Pubkey = mint_fixture.create_and_intiialize_mint(mint_decimals, &latest_blockhash).await?;
+    let ata_pda: Pubkey = mint_fixture.create_and_intiialize_ata(&mint_pkey, &latest_blockhash).await?;
+    mint_fixture.mint_to_ata(&mint_pkey, &ata_pda, mint_amount, &latest_blockhash).await?;
 
     // // 1. Craft InitializeIDOWithVesting instruction
     let transfer_amount: u64 = mint_amount;  // so we transfer the whole supply to the IDO
