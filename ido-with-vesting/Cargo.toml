@@ -25,6 +25,7 @@ crate-type = ["cdylib", "lib"]
 program-test = ["ergonomic-init", "instruction"]
 ergonomic-init = []
 instruction = []
+no-entrypoint = []
 
 [[example]]
 name = "client"
