@@ -2,11 +2,7 @@ use solana_program::{
     program_error::ProgramError,
 };
 use super::{
-    utils::{
-        Reader,
-        ReadBytes,
-        read_u64_slice
-    },
+    utils::reader::*,
     vesting::LinearVestingStrategy
 };
 

@@ -2084,6 +2084,7 @@ dependencies = [
  "env_logger 0.11.8",
  "log",
  "mint-fixture",
+ "solana-bytes-reader",
  "solana-client",
  "solana-program",
  "solana-program-test",
@@ -4296,6 +4297,15 @@ dependencies = [
  "solana-stake-program",
  "solana-system-program",
  "solana-vote-program",
+]
+
+[[package]]
+name = "solana-bytes-reader"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "99a47ddec35e8e71be0def932b2ded2afbd3b86827ffce326aa91506cc69ce70"
+dependencies = [
+ "solana-program-error",
 ]
 
 [[package]]

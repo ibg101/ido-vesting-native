@@ -7,11 +7,8 @@ use solana_program::{
     }
 };
 use crate::{
-    vesting::LinearVestingStrategy,
-    utils::{
-        read_u32_slice,
-        read_linear_vesting_strategy_slice
-    }
+    utils::reader::*,
+    vesting::LinearVestingStrategy
 };
 
 
@@ -51,8 +48,9 @@ impl Pack for IDOConfigAccount {
 
     /// Calling .unwrap() is safe, because LEN is validated in .unpack() or .unpack_unchecked() methods.
     fn unpack_from_slice(src: &[u8]) -> Result<Self, ProgramError> {
-        let vesting_strategy: LinearVestingStrategy = read_linear_vesting_strategy_slice(src, 0)?;
-        let lamports_per_token: u32 = read_u32_slice(src, 24)?;
+        let reader: Reader = src.into();
+        let vesting_strategy: LinearVestingStrategy = reader.read_linear_vesting_strategy(0)?;
+        let lamports_per_token: u32 = reader.read_u32(24)?;
 
         Ok(Self {
             vesting_strategy,

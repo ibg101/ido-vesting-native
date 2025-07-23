@@ -6,10 +6,7 @@ use solana_program::{
         IsInitialized
     }
 };
-use crate::utils::{
-    Reader, 
-    ReadBytes
-};
+use crate::utils::reader::*;
 
 
 #[repr(C)]
