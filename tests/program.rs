@@ -1,4 +1,4 @@
-use mint_fixture::{
+use solana_mint_fixture::{
     MintFixture,
     MintFixtureClient,
     MintFixtureError,
@@ -58,8 +58,8 @@ async fn test_all_instructions() -> Result<(), MintFixtureError> {
     let mint_raw_amount: u64 = 1_000_000_000;
     let mint_amount: u64 = mint_raw_amount * 10u64.pow(mint_decimals as u32);  // might cause error
 
-    let mint_pkey: Pubkey = mint_fixture.create_and_intiialize_mint(mint_decimals, &latest_blockhash).await?;
-    let ata_pda: Pubkey = mint_fixture.create_and_intiialize_ata(&mint_pkey, &latest_blockhash).await?;
+    let mint_pkey: Pubkey = mint_fixture.create_and_initialize_mint_without_freeze(mint_decimals, &latest_blockhash).await?;
+    let ata_pda: Pubkey = mint_fixture.create_and_initialize_ata(&mint_pkey, &latest_blockhash).await?;
     mint_fixture.mint_to_ata(&mint_pkey, &ata_pda, mint_amount, &latest_blockhash).await?;
 
     // // 1. Craft InitializeIDOWithVesting instruction

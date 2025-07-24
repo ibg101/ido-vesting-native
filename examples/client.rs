@@ -10,7 +10,7 @@ use ido_with_vesting::{
         IDO_VESTING_ACCOUNT_SEED
     }
 };
-use mint_fixture::{
+use solana_mint_fixture::{
     MintFixture,
     MintFixtureClient
 };
@@ -35,7 +35,7 @@ use solana_client::{
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    dotenvy::from_path(std::path::Path::new("./ido-with-vesting/.env"))?;
+    dotenvy::dotenv()?;
     env_logger::init();
 
     // 0. Define RpcClient and init payer
@@ -56,9 +56,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mint_amount: u64 = mint_raw_amount * 10u64.pow(mint_decimals as u32);
 
     let latest_blockhash: Hash = rpc_client.get_latest_blockhash().await?;
-    let mint_pkey: Pubkey = mint_fixture.create_and_intiialize_mint(mint_decimals, &latest_blockhash).await?;
+    let mint_pkey: Pubkey = mint_fixture.create_and_initialize_mint_without_freeze(mint_decimals, &latest_blockhash).await?;
     log::info!("prelude: create mint account - success: {}", mint_pkey);
-    let ata_pda: Pubkey = mint_fixture.create_and_intiialize_ata(&mint_pkey, &latest_blockhash).await?;
+    let ata_pda: Pubkey = mint_fixture.create_and_initialize_ata(&mint_pkey, &latest_blockhash).await?;
     log::info!("prelude: create signers ata - success: {}", ata_pda);
     let latest_blockhash: Hash = rpc_client.get_latest_blockhash().await?;  // we get new blockhash, because prev hash expires at this point
     mint_fixture.mint_to_ata(&mint_pkey, &ata_pda, mint_amount, &latest_blockhash).await?;
