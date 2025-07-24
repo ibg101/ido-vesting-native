@@ -1,7 +1,7 @@
 ## Project Features:
 - Contains all features mentioned in [ido-vesting-monorepo](https://github.com/ibg101/ido-vesting-monorepo).
-- Adds `mint-fixture` library crate for ergonomic initialization of required `SPL Token 2022` and `SPL Associated Token Account` accounts.
-- Implements 2 comprehensive **e2e Tests** against:
+- Uses my [`solana-mint-fixture`](https://github.com/ibg101/solana-mint-fixture) crate to simplify setup of `SPL Token 2022` and `Associated Token Accounts` in tests.
+- Implements 2 comprehensive **e2e tests** against:
   - RpcClient
   - BanksClient
 
