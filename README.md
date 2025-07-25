@@ -1,6 +1,7 @@
 ## Project Features:
 - Contains all features mentioned in [ido-vesting-monorepo](https://github.com/ibg101/ido-vesting-monorepo).
 - Uses my [`solana-mint-fixture`](https://github.com/ibg101/solana-mint-fixture) crate to simplify setup of `SPL Token 2022` and `Associated Token Accounts` in tests.
+- Uses my [`solana-bytes-reader`](https://github.com/ibg101/solana-bytes-reader) crate for zero-allocation parsing of byte slices into data types.
 - Implements 2 comprehensive **e2e tests** against:
   - RpcClient
   - BanksClient
