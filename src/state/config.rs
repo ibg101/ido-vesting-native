@@ -48,16 +48,14 @@ impl Pack for IDOConfigAccount {
 
     /// Calling .unwrap() is safe, because LEN is validated in .unpack() or .unpack_unchecked() methods.
     fn unpack_from_slice(src: &[u8]) -> Result<Self, ProgramError> {
-        let reader: Reader = src.into();
-        let vesting_strategy: LinearVestingStrategy = reader.read_linear_vesting_strategy(0)?;
-        let lamports_per_token: u32 = reader.read_u32(24)?;
+        let mut reader: Reader = Reader::new(src);
 
         Ok(Self {
-            vesting_strategy,
-            lamports_per_token,
-            bump: src[28],
-            unlocks: src[29],
-            is_initialized: src[30] != 0
+            vesting_strategy: reader.read_linear_vesting_strategy(true)?,
+            lamports_per_token: reader.read_u32()?,
+            bump: reader.read_u8()?,
+            unlocks: reader.read_u8()?,
+            is_initialized: reader.read_bool()?
         })
     }
 }

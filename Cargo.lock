@@ -4301,9 +4301,9 @@ dependencies = [
 
 [[package]]
 name = "solana-bytes-reader"
-version = "0.1.0"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "99a47ddec35e8e71be0def932b2ded2afbd3b86827ffce326aa91506cc69ce70"
+checksum = "51582db1add517c860d605059a96658b3fa2314e253f36bb4f7dc08581d2e103"
 dependencies = [
  "solana-program-error",
 ]

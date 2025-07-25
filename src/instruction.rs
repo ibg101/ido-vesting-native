@@ -36,12 +36,12 @@ impl IDOInstruction {
     fn unpack_initialize_with_vesting(data: &[u8]) -> Result<Self, ProgramError> {
         Self::check_expected_payload_len(data.len(), 36)?;
         
-        let reader: Reader = data.into();
+        let mut reader: Reader = Reader::new(data);
 
         Ok(Self::InitializeWithVesting {
-            amount: reader.read_u64(0)?,
-            lamports_per_token: reader.read_u32(8)?,
-            vesting_strategy: reader.read_linear_vesting_strategy(12)?
+            amount: reader.read_u64()?,
+            lamports_per_token: reader.read_u32()?,
+            vesting_strategy: reader.read_linear_vesting_strategy(false)?
         })
     }
 

@@ -59,15 +59,15 @@ impl Pack for IDOVestingAccount {
     }
 
     fn unpack_from_slice(src: &[u8]) -> Result<Self, ProgramError> {
-        let reader: Reader = src.into();
+        let mut reader: Reader = Reader::new(src);
 
         Ok(Self {
-            last_claim_ts: reader.read_i64(0)?,
-            claimed_amount: reader.read_u64(8)?,
-            bought_amount: reader.read_u64(16)?,
-            amount_per_unlock: reader.read_u64(24)?,
-            bump: src[32],
-            is_initialized: src[33] != 0 
-        })        
+            last_claim_ts: reader.read_i64()?,
+            claimed_amount: reader.read_u64()?,
+            bought_amount: reader.read_u64()?,
+            amount_per_unlock: reader.read_u64()?,
+            bump: reader.read_u8()?,
+            is_initialized: reader.read_bool()? 
+        })
     }
 }
